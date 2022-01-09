@@ -1,0 +1,163 @@
+int posSwitch()
+{
+   double sar = iSAR(_Symbol,_Period,0.02,0.05,1);
+   if(Ask > sar)
+     {
+      for(int i = 1;; i++)
+        {
+         double t1 = iSAR(_Symbol,_Period,0.02,0.05,i);
+         if(iClose(_Symbol,_Period,i) < t1)
+            return i;
+        }
+     }
+   else
+     {
+      for(int k = 0;; k++)
+        {
+         double t2 = iSAR(_Symbol,_Period,0.02,0.05,k);
+         if(iClose(_Symbol,_Period,k) > t2)
+            return k;
+        }
+     }
+}
+
+bool sectionTrade()
+// allows 1 trade per section
+{
+   if(OrderSelect(OrdersTotal()-1,SELECT_BY_POS) == true)
+   {
+      long OpenTime = OrderOpenTime();
+      long SwitchTime = iTime(_Symbol,_Period,posSwitch()-1);
+      
+      if(OpenTime > SwitchTime)
+         return true;
+   }
+   return false;
+}
+
+bool superTrend()
+{
+   double ST = iCustom(_Symbol,_Period,"SuperTrend",20,5,0,1);
+   double close = iClose(_Symbol,_Period,1);
+   if(close > ST)
+      return true;
+   return false;
+}
+
+void OnTick()
+{
+   double ticket;
+   double ent = 0;
+   double stop;
+   double profit;
+   
+   double sar = iSAR(_Symbol,_Period,0.02,0.05,0);
+   double c1 = iClose(_Symbol,_Period,1);
+   double c2 = iClose(_Symbol,_Period,2);
+   double ema20 = iMA(_Symbol,_Period,20,0,MODE_EMA,PRICE_CLOSE,1);
+   double ema50 = iMA(_Symbol,_Period,50,0,MODE_EMA,PRICE_CLOSE,1);
+   
+   bool enter = false;
+   double high = iHigh(_Symbol,_Period,1);
+   double low = iLow(_Symbol,_Period,1);
+   
+   if(Ask > sar && superTrend() == true)
+   // looking for long position
+   {
+      enter = false;
+      if(posSwitch() == 2)
+      {
+         if(c1 > ema20 && c1 > ema50)
+            enter = true;
+      }
+      else if(posSwitch() == 3)
+      {
+         if(c1 > ema20 && c1 > ema50)
+            enter = true;
+      }
+      
+      ent = high+10*_Point;
+      stop = low-10*_Point;
+      double pointA = (ent - stop)*100000;
+      double lotA = AccountBalance()*0.01/pointA;
+      
+      if(ent != 0 && stop !=0)
+         profit = Ask + (ent-stop)*2;
+//      if(enter == true && sectionTrade() == false)
+         if(enter == true && OrdersTotal()==0)
+         ticket = OrderSend(_Symbol,OP_BUYSTOP,lotA,ent,2,stop,profit,NULL,0,0,Green); 
+   }
+   
+   else if(Ask < sar && superTrend() == false)
+   // looking for short position
+   {
+      enter = false;
+      if(posSwitch() == 2)
+      {
+         if(c1 < ema20 && c1 < ema50)
+            enter = true;
+      }
+      else if(posSwitch() == 3)
+      {
+         if(c1 > ema20 && c1 > ema50)
+            enter = true;
+      }
+      
+      ent = low-10*_Point;
+      stop = high+10*_Point;
+      double pointB = (stop - ent)*100000;
+      double lotB = AccountBalance()*0.01/pointB;
+      
+      if(ent != 0 && stop !=0)
+         profit = Ask - (stop-ent)*2; // change this around (the ask to close)
+//      if(enter == true && sectionTrade() == false)
+         if(enter == true && OrdersTotal()==0)
+         ticket = OrderSend(_Symbol,OP_SELLSTOP,lotB,ent,2,stop,profit,NULL,0,0,Green); 
+   }
+  
+   
+   if(OrderSelect(OrdersTotal()-1,SELECT_BY_POS) == true)
+   // invalidation: if Ask goes under ema, delete the pending order
+   {
+      if(OrderType() == 4)
+      {
+         c1 += 5*_Point;
+         if(c1 < ema20 && c1 < ema50)
+            OrderDelete(OrderTicket(),Yellow);
+      }
+      else if(OrderType() == 5)
+      {
+         c1 -= 5*_Point;
+         if(c1 > ema20 && c1 > ema50)
+            OrderDelete(OrderTicket(),Yellow);
+      }
+   }
+   
+   if(OrderSelect(OrdersTotal()-1,SELECT_BY_POS) == true)
+   // moves the stoploss up to entry if Ask goes over 1R
+   {
+      double up,down;
+      if(OrderType() == 0)
+      {
+         ent = OrderOpenPrice();
+         stop = OrderStopLoss();
+         profit = OrderTakeProfit();
+         up = c1 - ent - 5*_Point;
+         down = ent - stop;
+         
+         if(up > down && c2 < Ask && c1 > Ask)
+            OrderModify(OrderTicket(),0,ent,profit,0,White);
+      }   
+      if(OrderType() == 1)
+      {
+         ent = OrderOpenPrice();
+         stop = OrderStopLoss();
+         profit = OrderTakeProfit();
+         down = ent - c1;
+         up = stop - ent;
+         
+         if(up < down && c2 > Ask && c1 < Ask)
+            OrderModify(OrderTicket(),0,ent,profit,0,White);
+      }  
+   }
+}
